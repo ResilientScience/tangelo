@@ -75,23 +75,35 @@ def invoke_service(module, *pargs, **kwargs):
     # service modules themselves do.
     response = empty_response()
 
+    # Compute the containing directory of this module.
+    service_dir = "/".join(module.split("/")[:-1])
+
+    # Prepend the service directory to the system path.
+    savepath = list(sys.path)
+    sys.path.insert(0, service_dir)
+
     # Import the module.
     try:
         service = imp.load_source("service", module)
     except IOError as e:
         log("error: " + module)
         response['error'] = "IOError: %s" % (e)
+        sys.path = savepath
         return json.dumps(response)
 
     # Report an error if the Handler object has no go() method.
     if 'run' not in dir(service):
         response['error'] = "tangelo: error: no function `run()` defined in module '%s'" % (module)
+        sys.path = savepath
         return json.dumps(response)
 
     # Call the module's run() method, passing it the positional and keyword args
     # that came into this method.
     try:
         result = service.run(*pargs, **kwargs)
+
+        # Restore the path to what it was before
+        sys.path = savepath
 
         # Check the type of the result - if it's anything other than a string,
         # assume it needs to be converted to JSON.
@@ -115,6 +127,8 @@ def invoke_service(module, *pargs, **kwargs):
             response['traceback'] += "\n" + s.getvalue()
         else:
             response['traceback'] = "\n" + s.getvalue()
+
+        sys.path = savepath
 
         # Serialize to JSON.
         return json.dumps(response)
